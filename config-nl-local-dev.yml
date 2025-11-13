@@ -1,0 +1,19 @@
+picnic-client:
+  keycloak: null
+
+dwh:
+  database: picnic_nl_prod
+  warehouse: ANALYSIS
+  account: uj82639.eu-west-1
+  role: analyst
+  username: !ENV_DWH_USERNAME
+
+picnic-google-sheets:
+  google_service_account: null
+
+
+salesforce:
+  user: !ENV_SALESFORCE_USERNAME
+  password: !ENV_SALESFORCE_PASSWORD
+  token: !ENV_SALESFORCE_TOKEN
+  domain: picnic-nl.my

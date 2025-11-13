@@ -6,6 +6,7 @@ import logging
 import numpy as np 
 from constants import GSHEET_CLIENT, SQL_CLIENT,  SF
 from string import ascii_uppercase
+from picnic.tools import config_loader
 
 letters = ascii_uppercase * 4
 
@@ -20,6 +21,10 @@ pd.options.mode.chained_assignment = None
 class promo_to_salesforce:
 
     def __init__(self, salesforce_connector, sql_client,campaign_id,start_date,end_date):
+        
+        config = config_loader.load_config()
+
+        self.environment = config['environment']
         
         self.saleforce_connector = salesforce_connector
         self.snowflake_instance = snowflake_queries(sql_client)
@@ -88,7 +93,13 @@ class promo_to_salesforce:
 
     def create_salesforce_object(self, variable_data : list | dict,
         salesforce_object, depth : str):
+
+
         try:
+
+            if self.environment != "prod":
+                print(f"[SKIPPED - NON PROD ENV] Would create {depth}: {variable_data}")
+                return 
 
             response = salesforce_object.create(variable_data)
             return response['id']
