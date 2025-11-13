@@ -19,6 +19,8 @@ pd.options.mode.chained_assignment = None
 # To run locally 
 # pipenv run python promo_uploader_promobox.py
 
+# spreadsheet: https://docs.google.com/spreadsheets/d/1pcrI_UBBduVqQhXDnsRpF06oHiNlQJCL9uWQCx_4KCk/edit?gid=795318163#gid=795318163
+
 
 class promo_to_salesforce:
 
@@ -225,7 +227,25 @@ class promo_to_salesforce:
                     ppi = self.create_salesforce_object(salesforce_object=self.saleforce_connector.Picnic_Promotion_Item__c,
                     variable_data=ppi_dict, depth = f'{promo_group}-{art_id}')
 
+    def clear_sheet(self): 
+        if self.environment != "prod":
+            print("[SKIPPED - NON PROD ENV] Would clear the sheet's content")
+            return
+        
+        worksheet = self.worksheet
+        
+        num_rows = worksheet.row_count
+        num_cols = worksheet.col_count
 
+        # Build empty rows, except header row
+        empty_rows = [["" for _ in range(num_cols)] for _ in range(num_rows - 1)]
+
+        worksheet.update(
+            range_name=f"A2:{letters[num_cols - 1]}{num_rows}",
+            values=empty_rows
+        )
+
+        print("Cleared the sheet's content.")
 
     def upload_pipeline(self):
 
@@ -238,6 +258,8 @@ class promo_to_salesforce:
 
         self.create_promotions(campaign_id=self.campaign_id, promo_dataframe=merged_df, 
         promo_start_date=self.promo_start_date, promo_end_date=self.promo_end_date)
+
+        self.clear_sheet()
 
 
 
