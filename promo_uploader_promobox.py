@@ -16,6 +16,8 @@ origin=os.getcwd()
 
 pd.options.mode.chained_assignment = None
 
+# To run locally 
+# pipenv run python promo_uploader_promobox.py
 
 
 class promo_to_salesforce:
