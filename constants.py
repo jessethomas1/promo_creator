@@ -38,5 +38,5 @@ SF = Salesforce(
     username=config["salesforce"]["user"],
     password=config["salesforce"]["password"],
     security_token=config["salesforce"]["token"],
-    domain=config["salesforce"]["domain"]
+    domain='picnic-nl.my'
 )

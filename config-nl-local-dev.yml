@@ -5,7 +5,7 @@ dwh:
   database: picnic_nl_prod
   warehouse: ANALYSIS
   account: uj82639.eu-west-1
-  role: analyst
+  role: analyst_salesforce
   username: !ENV_DWH_USERNAME
 
 picnic-google-sheets:
