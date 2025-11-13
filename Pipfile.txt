@@ -1,0 +1,25 @@
+[[source]]
+url = "https://${NEXUS_USERNAME}:${NEXUS_PASSWORD}@nexus.global.picnicinternational.com/repository/pypi-public/simple"
+verify_ssl = true
+name = "picnic"
+
+[packages]
+ez-setup = "*"
+picnic-tools = "*"
+picnic-database = "*"
+openpyxl = "*"
+pandas = "*"
+simple-salesforce = "*"
+numpy = "*"
+easygui = "*"
+pygsheets = "*"
+picnic-google-sheets = "*"
+gspread-dataframe = "*"
+gspread-pandas = "*"
+slack-bolt = "*"
+slack-sdk = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.10"
