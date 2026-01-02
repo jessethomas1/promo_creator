@@ -27,8 +27,13 @@ class promo_to_salesforce:
     def __init__(self, salesforce_connector, sql_client,campaign_id,start_date,end_date):
         
         config = config_loader.load_config()
+        print("Loaded configuration:")
+        print(config)
 
         self.environment = config['environment']
+        print(f"Operating in environment: {self.environment}")
+        print(type(self.environment))
+        print(self.environment.extra)
         
         self.saleforce_connector = salesforce_connector
         self.snowflake_instance = snowflake_queries(sql_client)
@@ -101,7 +106,7 @@ class promo_to_salesforce:
 
         try:
 
-            if self.environment != "prod":
+            if "prod" not in self.environment.extra:
                 print(f"[SKIPPED - NON PROD ENV] Would create {depth}: {variable_data}")
                 return 
 
@@ -112,6 +117,7 @@ class promo_to_salesforce:
             logging.error(f'Failed to create promotion object {depth}.')
             logging.error(f'With the following variable_data {variable_data}.')
             logging.error(f'{e}')
+            raise e
 
 
     def obtain_promotion_info(self, promo_data : pd.DataFrame, x_var : str, 
@@ -228,7 +234,7 @@ class promo_to_salesforce:
                     variable_data=ppi_dict, depth = f'{promo_group}-{art_id}')
 
     def clear_sheet(self): 
-        if self.environment != "prod":
+        if "prod" not in self.environment.extra:
             print("[SKIPPED - NON PROD ENV] Would clear the sheet's content")
             return
         
@@ -241,8 +247,8 @@ class promo_to_salesforce:
         empty_rows = [["" for _ in range(num_cols)] for _ in range(num_rows - 1)]
 
         worksheet.update(
-            range_name=f"A2:{letters[num_cols - 1]}{num_rows}",
-            values=empty_rows
+            f"A2:{letters[num_cols - 1]}{num_rows}",
+            empty_rows
         )
 
         print("Cleared the sheet's content.")
