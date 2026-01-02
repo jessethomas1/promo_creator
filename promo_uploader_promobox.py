@@ -269,8 +269,8 @@ class promo_to_salesforce:
 
 
 
+# Check campaign ID and dates before running
+run = promo_to_salesforce(salesforce_connector=SF,
+sql_client=SQL_CLIENT,campaign_id='701P900000aw8VCIAY',start_date='2026-01-04',end_date='2027-01-10')
 
-test = promo_to_salesforce(salesforce_connector=SF,
-sql_client=SQL_CLIENT,campaign_id='701P900000YXXUnIAP',start_date='2025-11-05',end_date='2026-01-31')
-
-lift = test.upload_pipeline()
+lift = run.upload_pipeline()
