@@ -17,3 +17,7 @@ salesforce:
   password: !ENV_SALESFORCE_PASSWORD
   token: !ENV_SALESFORCE_TOKEN
   domain: picnic-nl.my
+
+campaign_ids:
+  Promo box - Champions: 701P900000aw8VCIAY 
+  Promo box 2025/2026: 701P900000YXXUnIAP

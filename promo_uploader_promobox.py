@@ -24,7 +24,7 @@ pd.options.mode.chained_assignment = None
 
 class promo_to_salesforce:
 
-    def __init__(self, salesforce_connector, sql_client,campaign_id,start_date,end_date):
+    def __init__(self, salesforce_connector, sql_client,start_date,end_date):
         
         config = config_loader.load_config()
         print("Loaded configuration:")
@@ -45,7 +45,6 @@ class promo_to_salesforce:
         self.campaign_based = True
         self.promo_start_date = start_date
         self.promo_end_date = end_date
-        self.campaign_id = campaign_id
 
 
 
@@ -121,16 +120,15 @@ class promo_to_salesforce:
 
 
     def obtain_promotion_info(self, promo_data : pd.DataFrame, x_var : str, 
-    y_var : str, mech_var : str, strike_var : str, name: str):
+    y_var : str, mech_var : str, name: str):
 
         row = promo_data.iloc[0]
         x = '' if row[x_var] == 'nan' else row[x_var]
         y = None if row[y_var] == 'nan' else int(float(row[y_var])) 
         mechanism = row[mech_var]
-        strikethrough = True if row[strike_var] == 1 else False
         promo_name = row[name]
         
-        return x, y, mechanism, strikethrough, promo_name
+        return x, y, mechanism, promo_name
     
     def obtain_pg_info(self, group_data=pd.DataFrame, name=str):
         row=group_data.iloc[0]
@@ -149,18 +147,24 @@ class promo_to_salesforce:
 
 
 
-    def create_promotions(self, campaign_id : str,
-        promo_dataframe : pd.DataFrame, promo_start_date : str,
+    def create_promotions(self, promo_dataframe : pd.DataFrame, promo_start_date : str,
         promo_end_date : str):
 
         su_dict = self.retrieve_su_info()
+
+        campaign_name = promo_dataframe['Campaign'].iloc[0]
 
         promo_dataframe['Promo group combination'] = promo_dataframe['Promo Group'].astype(str) + promo_dataframe['Promo Name'].astype(str)
 
         unique_promo_groups = promo_dataframe['Promo group combination'].unique()
 
-        promo_dataframe['Promo combination'] = promo_dataframe['Promo Name'].astype(str)  + promo_dataframe['X'].astype(str)  + promo_dataframe['Y'].astype(str)\
-        +  promo_dataframe['Mechanism'].astype(str) +  promo_dataframe['Hide strikethrough'].astype(str)
+        promo_dataframe['Promo combination'] = (
+            promo_dataframe['Promo Name'].astype(str)
+            + promo_dataframe['X'].astype(str)
+            + promo_dataframe['Y'].astype(str)
+            + promo_dataframe['Mechanism'].astype(str)
+        )
+
 
         for promo_group in unique_promo_groups:
             print(f'Creating promotion group {promo_group}')
@@ -190,8 +194,8 @@ class promo_to_salesforce:
 
                 promo_article_data = promo_group_data[promo_group_data['Promo combination'] == promotion]
                 
-                x, y, mechanism, strikethrough, promo_name = self.obtain_promotion_info(promo_data=promo_article_data, x_var='X', y_var='Y',
-                mech_var='Mechanism', strike_var='Hide strikethrough', name='Promo Name')
+                x, y, mechanism, promo_name = self.obtain_promotion_info(promo_data=promo_article_data, x_var='X', y_var='Y',
+                mech_var='Mechanism', name='Promo Name')
 
                 promo_var_dict = {'Name' : promo_name,
                                   'Promotion_Group__c' : promo_group_id,
@@ -201,7 +205,7 @@ class promo_to_salesforce:
                                    'Promotion_Mechanism__c' : mechanism,
                                    'Promotion_Mechanism_Variable_X__c' : x,
                                    'Promotion_Mechanism_Variable_Y__c' : y,
-                                   'Hide_Strikethrough_Price__c' : strikethrough,
+                                   'Hide_Strikethrough_Price__c' : False,
                                    'Hidden_On_Promo_Page__c': False,
                                    'Maximum_Applications_Per_Order__c': 5}
                 
@@ -262,15 +266,22 @@ class promo_to_salesforce:
         merged_df = self.article_id_to_sf(promo_dataframe=promo_dataframe, sf_dataframe = sf_df)
 
 
-        self.create_promotions(campaign_id=self.campaign_id, promo_dataframe=merged_df, 
-        promo_start_date=self.promo_start_date, promo_end_date=self.promo_end_date)
+        self.create_promotions(promo_dataframe=merged_df, promo_start_date=self.promo_start_date, promo_end_date=self.promo_end_date)
 
         self.clear_sheet()
 
 
 
-# Check campaign ID and dates before running
-run = promo_to_salesforce(salesforce_connector=SF,
-sql_client=SQL_CLIENT,campaign_id='701P900000aw8VCIAY',start_date='2026-01-04',end_date='2027-01-10')
+def main() -> None:
+    # Check dates before running
+    run = promo_to_salesforce(
+        salesforce_connector=SF,
+        sql_client=SQL_CLIENT,
+        start_date="2026-01-04",
+        end_date="2027-01-10",
+    )
+    run.upload_pipeline()
 
-lift = run.upload_pipeline()
+
+if __name__ == "__main__":
+    main()
