@@ -185,12 +185,22 @@ class promo_to_salesforce:
         if grouped.ngroups == 0:
             raise ValueError("No (Campaign, Promo Group) groups found in the sheet.")
 
-        def _single_value(group_df: pd.DataFrame, col: str, group_name: str) -> str | None:
+        def _single_value(
+            group_df: pd.DataFrame,
+            col: str,
+            group_name: str,
+            *,
+            fallback_to_group_name: bool = False,
+        ) -> str | None:
             vals = group_df[col].replace({"nan": np.nan, "": np.nan}).dropna().unique()
+
+            # If empty and we want fallback (only for Promo Name)
             if len(vals) == 0:
-                return None
+                return group_name if fallback_to_group_name else None
+
             if len(vals) > 1:
                 raise ValueError(f"Promo Group '{group_name}' has multiple '{col}' values: {list(vals)}")
+
             return str(vals[0])
 
 
@@ -201,7 +211,7 @@ class promo_to_salesforce:
         for (campaign_id, campaign_name, group_name), group_df in grouped:
             group_df = group_df.copy()
 
-            promo_name = _single_value(group_df, "Promo Name", group_name)
+            promo_name = _single_value(group_df, "Promo Name", group_name, fallback_to_group_name=True)
             mechanism = _single_value(group_df, "Mechanism", group_name)
             x_raw = _single_value(group_df, "X", group_name)
             y_raw = _single_value(group_df, "Y", group_name)
