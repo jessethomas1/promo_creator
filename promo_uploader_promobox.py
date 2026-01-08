@@ -54,6 +54,11 @@ class promo_to_salesforce:
         promo_dataframe = get_as_dataframe(worksheet=self.worksheet, evaluate_formulas=True)
         promo_dataframe = promo_dataframe[promo_dataframe['Promo Group'].notna()]
 
+        if "Purchase Discount" not in promo_dataframe.columns:
+            promo_dataframe["Purchase Discount"] = np.nan
+        if "Purchase Discount Comment" not in promo_dataframe.columns:
+            promo_dataframe["Purchase Discount Comment"] = np.nan
+
 
         promo_dataframe['X'] = promo_dataframe['X'].astype(str)
         promo_dataframe['Y'] = promo_dataframe['Y'].astype(str)
@@ -281,10 +286,26 @@ class promo_to_salesforce:
                 ppi_dict = {
                     "Picnic_Article__c": sf_id,
                     "Promotion__c": promotion_id,
-                    "Purchase_Discount__c": 0,
                     "Selling_Unit__c": su_dict[art_id],
                     "Hidden_On_Promo_Page__c": False,
                 }
+
+                # --- Optional fields from sheet ---
+                # Purchase Discount (float)
+                purchase_discount_raw = row.get("Purchase Discount", np.nan)
+                if pd.notna(purchase_discount_raw) and str(purchase_discount_raw).strip() != "":
+                    try:
+                        ppi_dict["Purchase_Discount__c"] = float(purchase_discount_raw)
+                    except ValueError as e:
+                        raise ValueError(
+                            f"Invalid 'Purchase Discount' value '{purchase_discount_raw}' for article_id {art_id} "
+                            f"in promo group '{group_name}'. Expected a number."
+                        ) from e
+
+                # Purchase Discount Comment (string)
+                purchase_discount_comment_raw = row.get("Purchase Discount Comment", np.nan)
+                if pd.notna(purchase_discount_comment_raw) and str(purchase_discount_comment_raw).strip() != "":
+                    ppi_dict["Purchase_Discount_Comment__c"] = str(purchase_discount_comment_raw).strip()
 
                 self.create_salesforce_object(
                     salesforce_object=self.saleforce_connector.Picnic_Promotion_Item__c,
