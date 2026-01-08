@@ -54,6 +54,12 @@ class promo_to_salesforce:
         promo_dataframe = get_as_dataframe(worksheet=self.worksheet, evaluate_formulas=True)
         promo_dataframe = promo_dataframe[promo_dataframe['Promo Group'].notna()]
 
+        promo_dataframe["Promo Group"] = promo_dataframe["Promo Group"].astype(str).str.strip()
+        promo_dataframe["Promo Group"] = promo_dataframe["Promo Group"].replace({"nan": np.nan, "": np.nan})
+
+        if promo_dataframe["Promo Group"].isna().any():
+            raise ValueError("Found empty Promo Group values in the sheet. Fill them in for all rows.")
+
         if "Purchase Discount" not in promo_dataframe.columns:
             promo_dataframe["Purchase Discount"] = np.nan
         if "Purchase Discount Comment" not in promo_dataframe.columns:
@@ -160,32 +166,24 @@ class promo_to_salesforce:
     ) -> None:
         su_dict = self.retrieve_su_info()
 
-        # --- Validate + normalize Campaign (must be exactly 1 per upload) ---
+        # --- Normalize + validate Campaign per row ---
         promo_dataframe["Campaign"] = promo_dataframe["Campaign"].astype(str).str.strip()
-        campaigns = (
-            promo_dataframe["Campaign"]
-            .replace({"nan": np.nan, "": np.nan})
-            .dropna()
-            .unique()
-        )
-        if len(campaigns) != 1:
-            raise ValueError(f"Expected exactly 1 Campaign in the sheet, found: {list(campaigns)}")
+        promo_dataframe["Campaign"] = promo_dataframe["Campaign"].replace({"nan": np.nan, "": np.nan})
 
-        campaign_name = campaigns[0]
-        campaign_id = self.resolve_campaign_id(campaign_name)
+        if promo_dataframe["Campaign"].isna().any():
+            raise ValueError("Found empty Campaign values in the sheet. Fill them in for all rows.")
+
+        # Resolve campaign id per row
+        promo_dataframe["campaign_id"] = promo_dataframe["Campaign"].apply(self.resolve_campaign_id)
+
 
         # --- Normalize fields we rely on ---
         for col in ["Promo Group", "Promo Name", "Mechanism", "X", "Y"]:
             promo_dataframe[col] = promo_dataframe[col].astype(str).str.strip()
 
-        promo_groups = (
-            promo_dataframe["Promo Group"]
-            .replace({"nan": np.nan, "": np.nan})
-            .dropna()
-            .unique()
-        )
-        if len(promo_groups) == 0:
-            raise ValueError("No Promo Group values found in the sheet.")
+        grouped = promo_dataframe.groupby(["campaign_id", "Campaign", "Promo Group"], dropna=False)
+        if grouped.ngroups == 0:
+            raise ValueError("No (Campaign, Promo Group) groups found in the sheet.")
 
         def _single_value(group_df: pd.DataFrame, col: str, group_name: str) -> str | None:
             vals = group_df[col].replace({"nan": np.nan, "": np.nan}).dropna().unique()
@@ -200,8 +198,8 @@ class promo_to_salesforce:
         MECH_REQUIRES_Y: set[str] = {"X_FOR_PRICE_Y", "ABSOLUTE_PRICE_Y", "X_PLUS_Y_FREE"}
         MECH_OPTIONAL_Y: set[str] = {"X_HALF_PRICE"}  # extend if needed
 
-        for group_name in promo_groups:
-            group_df = promo_dataframe[promo_dataframe["Promo Group"] == group_name].copy()
+        for (campaign_id, campaign_name, group_name), group_df in grouped:
+            group_df = group_df.copy()
 
             promo_name = _single_value(group_df, "Promo Name", group_name)
             mechanism = _single_value(group_df, "Mechanism", group_name)
