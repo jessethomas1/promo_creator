@@ -29,6 +29,7 @@ class promo_to_salesforce:
         config = config_loader.load_config()
         print("Loaded configuration:")
         print(config)
+        self.config = config
 
         self.environment = config['environment']
         print(f"Operating in environment: {self.environment}")
@@ -146,96 +147,151 @@ class promo_to_salesforce:
 
 
 
-
-    def create_promotions(self, promo_dataframe : pd.DataFrame, promo_start_date : str,
-        promo_end_date : str):
-
+    def create_promotions(
+        self,
+        promo_dataframe: pd.DataFrame,
+        promo_start_date: str,
+        promo_end_date: str,
+    ) -> None:
         su_dict = self.retrieve_su_info()
 
-        campaign_name = promo_dataframe['Campaign'].iloc[0]
-
-        promo_dataframe['Promo group combination'] = promo_dataframe['Promo Group'].astype(str) + promo_dataframe['Promo Name'].astype(str)
-
-        unique_promo_groups = promo_dataframe['Promo group combination'].unique()
-
-        promo_dataframe['Promo combination'] = (
-            promo_dataframe['Promo Name'].astype(str)
-            + promo_dataframe['X'].astype(str)
-            + promo_dataframe['Y'].astype(str)
-            + promo_dataframe['Mechanism'].astype(str)
+        # --- Validate + normalize Campaign (must be exactly 1 per upload) ---
+        promo_dataframe["Campaign"] = promo_dataframe["Campaign"].astype(str).str.strip()
+        campaigns = (
+            promo_dataframe["Campaign"]
+            .replace({"nan": np.nan, "": np.nan})
+            .dropna()
+            .unique()
         )
+        if len(campaigns) != 1:
+            raise ValueError(f"Expected exactly 1 Campaign in the sheet, found: {list(campaigns)}")
+
+        campaign_name = campaigns[0]
+        campaign_id = self.resolve_campaign_id(campaign_name)
+
+        # --- Normalize fields we rely on ---
+        for col in ["Promo Group", "Promo Name", "Mechanism", "X", "Y"]:
+            promo_dataframe[col] = promo_dataframe[col].astype(str).str.strip()
+
+        promo_groups = (
+            promo_dataframe["Promo Group"]
+            .replace({"nan": np.nan, "": np.nan})
+            .dropna()
+            .unique()
+        )
+        if len(promo_groups) == 0:
+            raise ValueError("No Promo Group values found in the sheet.")
+
+        def _single_value(group_df: pd.DataFrame, col: str, group_name: str) -> str | None:
+            vals = group_df[col].replace({"nan": np.nan, "": np.nan}).dropna().unique()
+            if len(vals) == 0:
+                return None
+            if len(vals) > 1:
+                raise ValueError(f"Promo Group '{group_name}' has multiple '{col}' values: {list(vals)}")
+            return str(vals[0])
 
 
-        for promo_group in unique_promo_groups:
-            print(f'Creating promotion group {promo_group}')
-            
+        # Define which mechanisms require Y
+        MECH_REQUIRES_Y: set[str] = {"X_FOR_PRICE_Y", "ABSOLUTE_PRICE_Y", "X_PLUS_Y_FREE"}
+        MECH_OPTIONAL_Y: set[str] = {"X_HALF_PRICE"}  # extend if needed
 
-            promo_group_data = promo_dataframe[promo_dataframe['Promo group combination'] == promo_group]
-            group_name = self.obtain_pg_info(group_data=promo_group_data, name='Promo Group')
+        for group_name in promo_groups:
+            group_df = promo_dataframe[promo_dataframe["Promo Group"] == group_name].copy()
 
+            promo_name = _single_value(group_df, "Promo Name", group_name)
+            mechanism = _single_value(group_df, "Mechanism", group_name)
+            x_raw = _single_value(group_df, "X", group_name)
+            y_raw = _single_value(group_df, "Y", group_name)
 
+            if promo_name is None:
+                raise ValueError(f"Promo Group '{group_name}' is missing required column 'Promo Name'.")
+            if mechanism is None:
+                raise ValueError(f"Promo Group '{group_name}' is missing required column 'Mechanism'.")
+            if x_raw is None:
+                raise ValueError(f"Promo Group '{group_name}' is missing required column 'X'.")
 
-            variable_dict = {'Campaign__c' : campaign_id,
-                             'Name' : group_name,
-                             'Start_Date__c' : self.promo_start_date,
-                             'End_Date__c' : self.promo_end_date,
-                             'Type__c' : 'Article',
-                             'Sub_Type__c' : 'Discounts', 
-                            #  'Rank_No__c' : promo_group_data['PG_Rank'].max(),
-                             'Is_Promo_Box__c': True,
-                             'Hidden_on_Promo_Page__c': False}
-            
-            promo_group_id = self.create_salesforce_object(salesforce_object=self.saleforce_connector.Promotion_Group__c,
-            variable_data=variable_dict, depth = promo_group)
-            
-            unique_promotions = promo_group_data['Promo combination'].unique()
-            
-            for promotion in unique_promotions:
+            # Enforce / allow Y depending on mechanism
+            if mechanism in MECH_REQUIRES_Y:
+                if y_raw is None:
+                    raise ValueError(
+                        f"Promo Group '{group_name}' uses mechanism '{mechanism}' but is missing required 'Y'."
+                    )
+            elif mechanism in MECH_OPTIONAL_Y:
+                # Y can be missing; treat as None
+                pass
+            else:
+                # Unknown mechanism: be strict so you don't create broken promos silently
+                raise ValueError(
+                    f"Promo Group '{group_name}' has unsupported/unknown mechanism '{mechanism}'. "
+                    f"Add it to MECH_REQUIRES_Y or MECH_OPTIONAL_Y."
+                )
 
-                promo_article_data = promo_group_data[promo_group_data['Promo combination'] == promotion]
-                
-                x, y, mechanism, promo_name = self.obtain_promotion_info(promo_data=promo_article_data, x_var='X', y_var='Y',
-                mech_var='Mechanism', name='Promo Name')
+            # Convert X/Y into the formats your existing logic expects
+            x = "" if x_raw == "nan" else x_raw
+            y = None if (y_raw is None or y_raw == "nan") else int(float(y_raw))
 
-                promo_var_dict = {'Name' : promo_name,
-                                  'Promotion_Group__c' : promo_group_id,
-                                  'Data_Flow_Via__c' : 'PIM Cache',
-                                #    'Validator__c' : self.validator,
-                                   'Campaign_Based__c': self.campaign_based,
-                                   'Promotion_Mechanism__c' : mechanism,
-                                   'Promotion_Mechanism_Variable_X__c' : x,
-                                   'Promotion_Mechanism_Variable_Y__c' : y,
-                                   'Hide_Strikethrough_Price__c' : False,
-                                   'Hidden_On_Promo_Page__c': False,
-                                   'Maximum_Applications_Per_Order__c': 5}
-                
-        
+            # --- Create SF Promotion Group ---
+            promo_group_dict = {
+                "Campaign__c": campaign_id,
+                "Name": group_name,
+                "Start_Date__c": self.promo_start_date,
+                "End_Date__c": self.promo_end_date,
+                "Type__c": "Article",
+                "Sub_Type__c": "Discounts",
+                "Is_Promo_Box__c": True,
+                "Hidden_on_Promo_Page__c": False,
+            }
 
-                print(f'Creating promotion {promo_group} with mechanism {x} {mechanism} {y}')
-        
+            promo_group_id = self.create_salesforce_object(
+                salesforce_object=self.saleforce_connector.Promotion_Group__c,
+                variable_data=promo_group_dict,
+                depth=f"{campaign_name}-{group_name}",
+            )
 
-                promotion_id = self.create_salesforce_object(salesforce_object=self.saleforce_connector.Promotion__c,
-                variable_data=promo_var_dict, depth = f'{promo_group}-{promotion}' )
-                
-                
-                for _, row in promo_article_data.iterrows():
+            # --- Create exactly 1 SF Promotion under that group ---
+            promo_dict = {
+                "Name": promo_name,
+                "Promotion_Group__c": promo_group_id,
+                "Data_Flow_Via__c": "PIM Cache",
+                "Campaign_Based__c": self.campaign_based,
+                "Promotion_Mechanism__c": mechanism,
+                "Promotion_Mechanism_Variable_X__c": x,
+                "Promotion_Mechanism_Variable_Y__c": y,
+                "Hide_Strikethrough_Price__c": False,
+                "Hidden_On_Promo_Page__c": False,
+                "Maximum_Applications_Per_Order__c": 5,
+            }
 
-                        
+            print(f"Creating SF Promotion Group '{group_name}' and Promotion '{promo_name}' ({x} {mechanism} {y})")
 
-                    sf_id = str(row['Id'])
-                    art_id = row['article_id']
+            promotion_id = self.create_salesforce_object(
+                salesforce_object=self.saleforce_connector.Promotion__c,
+                variable_data=promo_dict,
+                depth=f"{group_name}-{promo_name}",
+            )
 
+            # --- Attach all articles in this group to that one promotion ---
+            for _, row in group_df.iterrows():
+                sf_id = str(row["Id"])
+                art_id = str(row["article_id"])
 
-                    ppi_dict = {'Picnic_Article__c' : sf_id, 'Promotion__c' : promotion_id, 
-                                'Purchase_Discount__c' : 0, 'Selling_Unit__c' : su_dict[art_id],
-                                # 'Rank_No__c': row['PPI Rank'],
-                                'Hidden_On_Promo_Page__c': False
-                                }
+                if art_id not in su_dict:
+                    raise KeyError(f"article_id {art_id} missing in selling_unit.sql mapping (su_dict)")
 
-        
-                    
-                    ppi = self.create_salesforce_object(salesforce_object=self.saleforce_connector.Picnic_Promotion_Item__c,
-                    variable_data=ppi_dict, depth = f'{promo_group}-{art_id}')
+                ppi_dict = {
+                    "Picnic_Article__c": sf_id,
+                    "Promotion__c": promotion_id,
+                    "Purchase_Discount__c": 0,
+                    "Selling_Unit__c": su_dict[art_id],
+                    "Hidden_On_Promo_Page__c": False,
+                }
+
+                self.create_salesforce_object(
+                    salesforce_object=self.saleforce_connector.Picnic_Promotion_Item__c,
+                    variable_data=ppi_dict,
+                    depth=f"{group_name}-{art_id}",
+                )
+
 
     def clear_sheet(self): 
         if "prod" not in self.environment.extra:
@@ -269,6 +325,29 @@ class promo_to_salesforce:
         self.create_promotions(promo_dataframe=merged_df, promo_start_date=self.promo_start_date, promo_end_date=self.promo_end_date)
 
         self.clear_sheet()
+
+    def resolve_campaign_id(self, campaign_name: str) -> str:
+        # Normalize sheet input
+        name = (campaign_name or "").strip()
+        if not name:
+            raise ValueError("Sheet column 'Campaign' is empty for at least one row.")
+
+        # Read mapping from config
+        campaign_id_mapping = self.config.get("campaign_ids", {})
+
+        if not isinstance(campaign_id_mapping, dict) or not campaign_id_mapping:
+            raise KeyError(
+            "No campaign mapping found in config. Expected config key: campaign_ids"
+            )
+
+        if name not in campaign_id_mapping:
+            known = ", ".join(sorted(campaign_id_mapping.keys()))
+            raise KeyError(
+                f"Campaign '{name}' not found in config mapping campaign_ids. "
+                f"Known campaigns: {known}"
+            )
+
+        return campaign_id_mapping[name]
 
 
 
