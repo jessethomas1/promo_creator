@@ -205,8 +205,8 @@ class promo_to_salesforce:
 
 
         # Define which mechanisms require Y
-        MECH_REQUIRES_Y: set[str] = {"X_FOR_PRICE_Y", "ABSOLUTE_PRICE_Y", "X_PLUS_Y_FREE"}
-        MECH_OPTIONAL_Y: set[str] = {"X_HALF_PRICE"}  # extend if needed
+        MECH_REQUIRES_Y: set[str] = {"X_FOR_PRICE_Y", "ABSOLUTE_PRICE_Y", "X_PLUS_Y_FREE", "PERCENT_DISCOUNT_Y", "X_PERCENT_DISCOUNT_Y"}
+        MECH_OPTIONAL_Y: set[str] = {"X_HALF_PRICE"}
 
         for (campaign_id, campaign_name, group_name), group_df in grouped:
             group_df = group_df.copy()
@@ -247,8 +247,8 @@ class promo_to_salesforce:
             promo_group_dict = {
                 "Campaign__c": campaign_id,
                 "Name": group_name,
-                "Start_Date__c": self.promo_start_date,
-                "End_Date__c": self.promo_end_date,
+                "Start_Datetime__c": self.promo_start_date,
+                "End_Datetime__c": self.promo_end_date,
                 "Type__c": "Article",
                 "Sub_Type__c": "Discounts",
                 "Is_Promo_Box__c": True,
@@ -385,8 +385,8 @@ def main() -> None:
     run = promo_to_salesforce(
         salesforce_connector=SF,
         sql_client=SQL_CLIENT,
-        start_date="2026-01-04",
-        end_date="2027-01-10",
+        start_date="2026-03-02",
+        end_date="2026-04-05",
     )
     run.upload_pipeline()
 
