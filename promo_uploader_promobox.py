@@ -1,9 +1,10 @@
-import pandas as pd 
+import pandas as pd
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from sql_data import snowflake_queries
 from gspread_dataframe import get_as_dataframe, set_with_dataframe
 import logging
-import numpy as np 
+import numpy as np
 from constants import GSHEET_CLIENT, SQL_CLIENT,  SF
 from string import ascii_uppercase
 from picnic.tools import config_loader
@@ -44,10 +45,23 @@ class promo_to_salesforce:
         self.worksheet = GSHEET_CLIENT.open_by_key('1pcrI_UBBduVqQhXDnsRpF06oHiNlQJCL9uWQCx_4KCk').worksheet('Promo_Upload')
         self.validator = "'false' && tags.contains('')"
         self.campaign_based = True
-        self.promo_start_date = start_date
-        self.promo_end_date = end_date
+        self.promo_start_date = self._to_sf_datetime(start_date, is_end=False)
+        self.promo_end_date = self._to_sf_datetime(end_date, is_end=True)
 
 
+
+    @staticmethod
+    def _to_sf_datetime(date_str: str, is_end: bool) -> str:
+        """Convert a local NL date string to a Salesforce GMT datetime string.
+
+        Start dates get time 00:00 local, end dates get 23:59 local.
+        """
+        nl_tz = ZoneInfo("Europe/Amsterdam")
+        local_dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=nl_tz)
+        if is_end:
+            local_dt = local_dt.replace(hour=23, minute=59)
+        gmt_dt = local_dt.astimezone(ZoneInfo("UTC"))
+        return gmt_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def read_data(self):    
 
